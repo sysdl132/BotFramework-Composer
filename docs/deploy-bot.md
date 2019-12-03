@@ -1,4 +1,4 @@
-# Deploy a bot
+# Publish a bot
 Bot Framework Composer includes scripts and instructions on how to deploy bots created in Composer to Azure Bot Service. 
 To deploy a bot, you will need to use Az CLI tool and Bot Framework LuBuild tools. 
 
