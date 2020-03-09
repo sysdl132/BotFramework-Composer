@@ -22,6 +22,7 @@ import { BASEURL } from './constants';
 import { attachLSPServer } from './utility/attachLSP';
 import log from './logger';
 
+const clientDirectory = path.resolve(require.resolve('@bfc/client'), '..');
 const app: Express = express();
 app.set('view engine', 'ejs');
 app.set('view options', { delimiter: '?' });
@@ -64,7 +65,7 @@ app.all('*', function(req: Request, res: Response, next: NextFunction) {
   next();
 });
 
-app.use(`${BASEURL}/`, express.static(path.join(__dirname, './public'), { immutable: true, maxAge: 31536000 }));
+app.use(`${BASEURL}/`, express.static(clientDirectory, { immutable: true, maxAge: 31536000 }));
 app.use(morgan('dev'));
 
 app.use(bodyParser.json({ limit: '50mb' }));
@@ -95,62 +96,64 @@ app.use(function(err: Error, req: Request, res: Response, _next: NextFunction) {
 });
 
 app.get(`${BASEURL}/extensionContainer.html`, function(req, res) {
-  res.render(path.resolve(__dirname, './public/extensionContainer.ejs'), { __nonce__: req.__nonce__ });
+  res.render(path.resolve(clientDirectory, 'extensionContainer.ejs'), { __nonce__: req.__nonce__ });
 });
 
 app.get('*', function(req, res) {
-  res.render(path.resolve(__dirname, './public/index.ejs'), { __nonce__: req.__nonce__ });
+  res.render(path.resolve(clientDirectory, 'index.ejs'), { __nonce__: req.__nonce__ });
 });
 
-const port = process.env.PORT || 5000;
-const server = app.listen(port, () => {
-  if (process.env.NODE_ENV === 'production') {
-    // eslint-disable-next-line no-console
-    console.log(`\n\nComposer now running at:\n\nhttp://localhost:${port}\n`);
+export async function start() {
+  const port = process.env.PORT || 5000;
+  const server = app.listen(port, () => {
+    if (process.env.NODE_ENV === 'production') {
+      // eslint-disable-next-line no-console
+      console.log(`\n\nComposer now running at:\n\nhttp://localhost:${port}\n`);
+    }
+  });
+
+  const wss: ws.Server = new ws.Server({
+    noServer: true,
+    perMessageDeflate: false,
+  });
+
+  const { lgImportResolver, luImportResolver, staticMemoryResolver } = BotProjectService;
+
+  function launchLanguageServer(socket: rpc.IWebSocket) {
+    const reader = new rpc.WebSocketMessageReader(socket);
+    const writer = new rpc.WebSocketMessageWriter(socket);
+    const connection: IConnection = createConnection(reader, writer);
+    const server = new LGServer(connection, lgImportResolver, staticMemoryResolver);
+    server.start();
   }
-});
 
-const wss: ws.Server = new ws.Server({
-  noServer: true,
-  perMessageDeflate: false,
-});
+  function launchLuLanguageServer(socket: rpc.IWebSocket) {
+    const reader = new rpc.WebSocketMessageReader(socket);
+    const writer = new rpc.WebSocketMessageWriter(socket);
+    const connection: IConnection = createConnection(reader, writer);
+    const server = new LUServer(connection, luImportResolver);
+    server.start();
+  }
 
-const { lgImportResolver, luImportResolver, staticMemoryResolver } = BotProjectService;
-
-function launchLanguageServer(socket: rpc.IWebSocket) {
-  const reader = new rpc.WebSocketMessageReader(socket);
-  const writer = new rpc.WebSocketMessageWriter(socket);
-  const connection: IConnection = createConnection(reader, writer);
-  const server = new LGServer(connection, lgImportResolver, staticMemoryResolver);
-  server.start();
-}
-
-function launchLuLanguageServer(socket: rpc.IWebSocket) {
-  const reader = new rpc.WebSocketMessageReader(socket);
-  const writer = new rpc.WebSocketMessageWriter(socket);
-  const connection: IConnection = createConnection(reader, writer);
-  const server = new LUServer(connection, luImportResolver);
-  server.start();
-}
-
-attachLSPServer(wss, server, '/lg-language-server', webSocket => {
-  // launch language server when the web socket is opened
-  if (webSocket.readyState === webSocket.OPEN) {
-    launchLanguageServer(webSocket);
-  } else {
-    webSocket.on('open', () => {
+  attachLSPServer(wss, server, '/lg-language-server', webSocket => {
+    // launch language server when the web socket is opened
+    if (webSocket.readyState === webSocket.OPEN) {
       launchLanguageServer(webSocket);
-    });
-  }
-});
+    } else {
+      webSocket.on('open', () => {
+        launchLanguageServer(webSocket);
+      });
+    }
+  });
 
-attachLSPServer(wss, server, '/lu-language-server', webSocket => {
-  // launch language server when the web socket is opened
-  if (webSocket.readyState === webSocket.OPEN) {
-    launchLuLanguageServer(webSocket);
-  } else {
-    webSocket.on('open', () => {
+  attachLSPServer(wss, server, '/lu-language-server', webSocket => {
+    // launch language server when the web socket is opened
+    if (webSocket.readyState === webSocket.OPEN) {
       launchLuLanguageServer(webSocket);
-    });
-  }
-});
+    } else {
+      webSocket.on('open', () => {
+        launchLuLanguageServer(webSocket);
+      });
+    }
+  });
+}
