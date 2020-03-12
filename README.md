@@ -1,5 +1,5 @@
 # This is a mirror for china users.Will don't do any changes.
-
+Please [download here](https://gitee.com/sysdl132/BotFramework-Composer) for china.
 # ![Microsoft Bot Framework Composer](./docs/media/gh-banner.png)
 
 # Microsoft Bot Framework Composer [PREVIEW]
